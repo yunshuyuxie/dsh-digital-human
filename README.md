@@ -58,6 +58,27 @@ node tools/cross-check-handshake.mjs          # App 与桥接的握手实现是�
 node tools/cold-start-check.mjs --profile <p> # 冷启动：从离线包安装桥接的全路径
 ```
 
+### 发布
+
+```powershell
+# 干跑：只做检查，不发布
+& .\tools\release.ps1 -DryRun
+
+# 完整发布：构建 → 校验产物新鲜度 → 建/更新 Release → 替换附件
+& .\tools\release.ps1
+
+# GitHub 直连不通时传入本地代理
+& .\tools\release.ps1 -Proxy http://127.0.0.1:64174
+```
+
+脚本把发布时**真实踩过的三个坑**固化成了检查：
+
+1. **运行中的实例会独占 `app.asar`**，构建报 `EBUSY` → 构建前自动停掉 `dist/app` 下的进程；
+2. **过期产物会被无声上传**（曾把缺两个功能的旧构建发出去）→ 上传前比对产物与最新源文件（含 `main/`、`preload/`、`renderer/`、`src/`、`package.json`、`electron-builder.yml`）的修改时间，过期即中止；
+3. **`github.com:443` 可能直连不通**（而 npm registry 正常）→ 支持 `-Proxy`，或回退到 git 的 `http.proxy`。
+
+凭据取自 git 存储的 GitHub 凭据（`git credential fill`），**不写入全局配置**。附件按同名单例语义**替换**：先删旧的再传新的。
+
 ## 仓库结构
 
 ```
