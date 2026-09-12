@@ -1,0 +1,10 @@
+{
+  "name": "dsh-digital-human-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js", "./package.json": "./package.json" },
+  "scripts": { "test": "node --test test/", "test:direct": "node test/protocol.test.mjs" },
+  "license": "MIT"
+}

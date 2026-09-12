@@ -1,0 +1,19 @@
+# Patch rows this package inserts into a dsh profile's cordis.patch.yml.
+#
+# The installer wraps this file's contents verbatim in its managed marker block
+# and substitutes __PROFILE__ with the profile it installs into, so the endpoint
+# and pipe names are deterministic instead of depending on runtime discovery.
+# Editing rows here is the single place a deployment changes what gets mounted.
+
+- insert:
+    - id: digital-human-bridge
+      name: dsh-digital-human-bridge
+      config:
+        # Pinned by the installer: keeps the pipe and endpoint file stable even
+        # when the loader's profile discovery cannot derive a name.
+        profile: __PROFILE__
+        # App connected -> the digital human owns permission confirmation;
+        # App not connected -> every request delegates straight back to the host
+        # chain, so the Web GUI keeps answering exactly as before.
+        approvalRouting: primary
+        approvalTimeoutMs: 120000

@@ -1,0 +1,1611 @@
+/*
+ * Renderer styles: one 360x560 frameless, transparent, always-on-top window
+ * that draws its own rounded dark panel. Nothing here may paint an opaque
+ * background on the html/body element, or the window corners turn black.
+ */
+
+:root {
+  --dh-panel-alpha: 0.92;
+  /* The three steps the footer control cycles through; `--dh-panel` keeps its
+     exact color and only its alpha follows `--dh-panel-alpha` (P1-4). */
+  --dh-panel-base: rgba(20, 22, 28, 0.92);
+  --dh-panel: rgba(20, 22, 28, var(--dh-panel-alpha, 0.92));
+  /* The vertical budget of the expanded 360x560 window: the avatar is sized from
+     the window height so it can never crowd out the composer (P0-1/P0-2). */
+  --dh-avatar-height: clamp(96px, 26%, 224px);
+  --dh-cyan: rgba(127, 216, 232, 0.22);
+  --dh-label: #eef2f7;
+  --dh-label-soft: #aab3c0;
+  --dh-label-faint: #7b8494;
+  --dh-border: rgba(255, 255, 255, 0.12);
+  --dh-border-soft: rgba(255, 255, 255, 0.07);
+  --dh-raised: rgba(255, 255, 255, 0.06);
+  --dh-amber: #f5b544;
+  --dh-red: #f2645a;
+  --dh-green: #5fd08a;
+  --dh-teal: #5fd9c4;
+  --dh-accent: #7fd8e8;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  color: var(--dh-label);
+  font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+.dh-boot {
+  margin: 0;
+  padding: 16px;
+  color: var(--dh-label-soft);
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.dh-root {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--dh-cyan);
+  border-radius: 16px;
+  /* The renderer's own element is the last in the chain and always resolves it,
+     so the panel stays dark even if the custom property is missing. */
+  background: rgba(20, 22, 28, var(--dh-panel-alpha, 0.92));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(12px);
+}
+
+/* The drag handle: the only strip the OS may move the window with. */
+.dh-drag {
+  box-sizing: border-box;
+  flex: none;
+  height: 18px;
+  -webkit-app-region: drag;
+  cursor: grab;
+}
+
+/* In the expanded form the drag strip shares its row with the collapse button. */
+.dh-view-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 0 4px;
+}
+
+.dh-view-head .dh-drag-head {
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+}
+
+.dh-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dh-root button,
+.dh-root input,
+.dh-root textarea,
+.dh-root ul,
+.dh-root .dh-body,
+.dh-root a {
+  -webkit-app-region: no-drag;
+}
+
+.dh-root button:focus-visible,
+.dh-root input:focus-visible,
+.dh-root textarea:focus-visible,
+.dh-root .dh-approval:focus-visible {
+  outline: 2px solid var(--dh-accent);
+  outline-offset: 2px;
+}
+
+/* ----------------------------------------------------------- error banner */
+
+.dh-error {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 10px 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(242, 100, 90, 0.55);
+  border-radius: 10px;
+  background: rgba(242, 100, 90, 0.14);
+  color: #ffd9d5;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.dh-error[hidden] {
+  display: none;
+}
+
+.dh-error-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.dh-error-close {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  line-height: 15px;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------- first-run wizard */
+
+/* The wizard replaces the whole panel; only its body scrolls, so the 360x560
+   window never grows a horizontal scrollbar. */
+.dh-wizard {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dh-wizard[hidden] {
+  display: none;
+}
+
+.dh-wizard-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 12px 8px;
+}
+
+.dh-wizard-title {
+  margin: 0;
+  color: var(--dh-label);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.dh-wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dh-wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 3px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.dh-wizard-step-no {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dh-wizard-step-current {
+  border-color: rgba(127, 216, 232, 0.55);
+  background: rgba(127, 216, 232, 0.14);
+  color: #d5f4fb;
+}
+
+.dh-wizard-step-done {
+  border-color: rgba(95, 208, 138, 0.45);
+  color: #b8f0cd;
+}
+
+.dh-wizard-step-done .dh-wizard-step-no {
+  background: rgba(95, 208, 138, 0.22);
+  color: #b8f0cd;
+}
+
+/* The only scrolling region: long paths and installer output stay inside. */
+.dh-wizard-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 12px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.dh-wizard-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dh-wizard-body::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.dh-wizard-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  animation: dh-pop 160ms ease;
+}
+
+.dh-wizard-label {
+  margin: 0;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dh-wizard-hint {
+  margin: 0;
+  color: var(--dh-label-soft);
+  font-size: 11px;
+  line-height: 16px;
+  word-break: break-word;
+}
+
+.dh-wizard-loading {
+  margin: 0;
+  color: var(--dh-label-soft);
+  font-size: 11px;
+}
+
+.dh-wizard-row {
+  display: flex;
+  gap: 6px;
+}
+
+.dh-wizard-row .dh-btn {
+  flex: none;
+}
+
+/* A path can be arbitrarily long: wrap it instead of widening the panel. */
+.dh-wizard-path {
+  margin: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--dh-label-soft);
+  font-size: 11px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dh-wizard-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dh-wizard-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dh-wizard-check-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-wizard-check-title {
+  margin: 0;
+  color: var(--dh-label);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.dh-wizard-check-detail {
+  margin: 1px 0 0;
+  color: var(--dh-label-soft);
+  font-size: 10px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dh-wizard-mark {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.dh-wizard-check[data-state="ok"] .dh-wizard-mark {
+  color: var(--dh-green);
+}
+
+.dh-wizard-check[data-state="bad"] .dh-wizard-mark {
+  color: var(--dh-red);
+}
+
+.dh-wizard-check[data-state="pending"] .dh-wizard-mark {
+  color: var(--dh-label-faint);
+}
+
+.dh-wizard-status {
+  margin: 0;
+  padding: 5px 7px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dh-wizard-status-ok {
+  border-color: rgba(95, 208, 138, 0.5);
+  background: rgba(95, 208, 138, 0.14);
+  color: #b8f0cd;
+}
+
+.dh-wizard-status-warn {
+  border-color: rgba(245, 181, 68, 0.5);
+  background: rgba(245, 181, 68, 0.14);
+  color: #ffe0b0;
+}
+
+.dh-wizard-status-bad {
+  border-color: rgba(242, 100, 90, 0.55);
+  background: rgba(242, 100, 90, 0.14);
+  color: #ffd9d5;
+}
+
+/* A `<select>` that fills the panel width without stretching the flex row. */
+.dh-wizard-select {
+  width: 100%;
+}
+
+.dh-wizard-output {
+  box-sizing: border-box;
+  margin: 0;
+  max-height: 132px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px 7px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--dh-label-soft);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.dh-wizard-output-line {
+  display: block;
+}
+
+.dh-wizard-output-error {
+  color: #ffb0a8;
+}
+
+.dh-wizard-pref {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+
+.dh-wizard-pref input {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--dh-accent);
+}
+
+.dh-wizard-pref-text {
+  color: var(--dh-label);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.dh-wizard-summary {
+  margin: 0;
+  color: var(--dh-label);
+  font-size: 11px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dh-wizard-foot {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 12px 9px;
+  border-top: 1px solid var(--dh-border-soft);
+}
+
+.dh-wizard-foot .dh-btn {
+  flex: none;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.dh-wizard-next {
+  margin-left: auto;
+  border-color: rgba(127, 216, 232, 0.5);
+  background: rgba(127, 216, 232, 0.16);
+  color: #d5f4fb;
+  font-weight: 600;
+}
+
+.dh-wizard-back[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------- avatar */
+
+.dh-avatar {
+  flex: none;
+  position: relative;
+  height: var(--dh-avatar-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Height is the constraint and the width is derived from it, so the figure can
+   never be wider than the panel and is centred in whatever is left over.
+   The ratio is the artwork's own (420x522), so `object-fit: contain` is exact
+   and neither axis can letterbox or stretch the figure. */
+.dh-stage {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 420 / 522;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+}
+.dh-avatar[data-face="offline"] { --dh-accent: #7a7f87; }
+.dh-avatar[data-face="idle"] { --dh-accent: #7fd8e8; }
+.dh-avatar[data-face="thinking"] { --dh-accent: #8fb6ff; }
+.dh-avatar[data-face="working"] { --dh-accent: #5fd9c4; }
+.dh-avatar[data-face="waiting"] { --dh-accent: #f5b544; }
+.dh-avatar[data-face="error"] { --dh-accent: #f2645a; }
+.dh-avatar[data-face="done"] { --dh-accent: #5fd08a; }
+
+.dh-rings {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: auto;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.dh-aura,
+.dh-progress {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.dh-aura {
+  stroke: var(--dh-accent);
+  stroke-width: 1.5;
+  opacity: 0.42;
+  filter: drop-shadow(0 0 6px var(--dh-accent));
+  transition: stroke 240ms ease, opacity 240ms ease;
+}
+
+.dh-progress {
+  stroke: var(--dh-accent);
+  stroke-width: 3;
+  /* circumference is ~289 units, so every dash pair sums to 289 */
+  stroke-dasharray: 80 209;
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 50px 50px;
+}
+.dh-avatar[data-face="working"] .dh-progress {
+  opacity: 0.85;
+  animation: dh-spin 1.8s linear infinite;
+}
+.dh-avatar[data-face="thinking"] .dh-progress {
+  opacity: 0.7;
+  stroke-dasharray: 24 265;
+  animation: dh-spin 4s linear infinite;
+}
+.dh-avatar[data-face="waiting"] .dh-aura {
+  opacity: 0.9;
+  animation: dh-pulse 1s ease-in-out infinite;
+}
+.dh-avatar[data-face="error"] .dh-aura {
+  opacity: 0.85;
+  stroke-width: 2.5;
+}
+.dh-avatar[data-face="done"] .dh-aura {
+  opacity: 0.75;
+  stroke-dasharray: 10 8;
+  animation: dh-spin 6s linear infinite;
+}
+.dh-avatar[data-face="offline"] .dh-aura {
+  opacity: 0.16;
+  filter: none;
+}
+
+.dh-faces {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dh-breathe 4.2s ease-in-out infinite;
+}
+.dh-avatar[data-face="waiting"] .dh-faces {
+  animation: dh-breathe 4.2s ease-in-out infinite, dh-hop 1.1s ease-in-out infinite;
+}
+.dh-avatar[data-face="error"] .dh-faces {
+  animation: dh-shake 2.6s ease-in-out infinite;
+}
+
+.dh-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 240ms ease;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.4));
+}
+/* The cross-fade: the active face is the only opaque one. */
+.dh-avatar[data-face="offline"] .dh-face[data-face="offline"],
+.dh-avatar[data-face="idle"] .dh-face[data-face="idle"],
+.dh-avatar[data-face="thinking"] .dh-face[data-face="thinking"],
+.dh-avatar[data-face="working"] .dh-face[data-face="working"],
+.dh-avatar[data-face="waiting"] .dh-face[data-face="waiting"],
+.dh-avatar[data-face="error"] .dh-face[data-face="error"],
+.dh-avatar[data-face="done"] .dh-face[data-face="done"] {
+  opacity: 1;
+}
+
+/* -------------------------------------------------------- avatar effects */
+
+.dh-effects {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dh-dots {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  display: none;
+  gap: 4px;
+}
+.dh-avatar[data-face="thinking"] .dh-dots {
+  display: flex;
+}
+.dh-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dh-accent);
+  animation: dh-bounce 1.2s ease-in-out infinite;
+}
+.dh-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.dh-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.dh-badge {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  display: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--dh-amber);
+  color: #241a06;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+  box-shadow: 0 0 0 3px rgba(20, 22, 28, 0.9);
+}
+.dh-avatar[data-face="waiting"] .dh-badge {
+  display: block;
+  animation: dh-badge-pulse 1s ease-in-out infinite;
+}
+
+.dh-sweat {
+  position: absolute;
+  top: 24px;
+  right: 16px;
+  display: none;
+  width: 9px;
+  height: 12px;
+  border-radius: 50% 50% 55% 55% / 65% 65% 35% 35%;
+  background: #9fd8ff;
+  transform: rotate(12deg);
+}
+.dh-avatar[data-face="error"] .dh-sweat {
+  display: block;
+  animation: dh-drip 1.6s ease-in infinite;
+}
+
+.dh-sparkles {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+.dh-avatar[data-face="done"] .dh-sparkles {
+  display: block;
+}
+.dh-sparkle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dh-green);
+  opacity: 0;
+  animation: dh-sparkle 1.8s ease-in-out infinite;
+}
+.dh-sparkle:nth-child(1) {
+  top: 22px;
+  left: 14px;
+}
+.dh-sparkle:nth-child(2) {
+  top: 52px;
+  right: 12px;
+  animation-delay: 0.4s;
+}
+.dh-sparkle:nth-child(3) {
+  top: 6px;
+  right: 44px;
+  animation-delay: 0.9s;
+}
+
+/* ---------------------------------------------------- compact (avatar only) */
+
+/* A ~200x220 window: the avatar fills it, and the only thing that may join it
+   is the pending-approval strip. The body never scrolls and never clips the
+   avatar — `.dh-stage` keeps its aspect ratio and the face keeps
+   `object-fit: contain`, so the art shrinks instead of being cut. */
+.dh-compact {
+  flex: 1;
+  min-height: 0;
+  /* The percentage-height chain must resolve somewhere: without this the avatar
+     below sizes from its own aspect ratio and overflows the chip. */
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Clicking the avatar expands. It is a `<button>` so the keyboard works too. */
+.dh-compact-avatar {
+  flex: 1;
+  min-height: 0;
+  /* The chip is a press-and-drag surface: no native image drag, no text select. */
+  -webkit-user-drag: none;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+/* The avatar is a fixed budget in the panel and fills its button in the compact
+   form. Two classes raise specificity over the base rule so the compact box is
+   genuinely constrained by both axes: the figure is centred (letterboxed) and
+   `object-fit: contain` on the face rules out aspect distortion. */
+.dh-compact .dh-avatar {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dh-compact .dh-stage {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+  flex: none;
+}
+
+.dh-compact-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 30px;
+  margin: 0 8px 8px;
+  padding: 4px 6px 4px 8px;
+  border: 1px solid rgba(245, 181, 68, 0.7);
+  border-radius: 10px;
+  background: rgba(245, 181, 68, 0.16);
+  box-shadow: 0 0 0 1px rgba(245, 181, 68, 0.2);
+  animation: dh-pop 160ms ease-out;
+}
+
+.dh-compact-strip[hidden] {
+  display: none;
+}
+
+.dh-compact-strip-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-amber);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-compact-process {
+  flex: none;
+  padding: 3px 9px;
+  border-color: rgba(245, 181, 68, 0.75);
+  background: rgba(245, 181, 68, 0.24);
+  color: #ffe6bb;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* The compact window has no room for a status strip or a stack of errors: the
+   drag handle and the error line float over the avatar instead of shrinking it. */
+/* The avatar chip shows only the figure — no panel chrome, no dark plate — so it
+   reads as a pet rather than a box. The panel window keeps the plate. */
+.dh-root:has(.dh-compact) {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* The halo alone is the drag cue: no grip bar is drawn, because it sat over the
+   avatar's head and said nothing the glow does not already say. */
+.dh-compact[data-dragging='true'] .dh-stage {
+  filter: drop-shadow(0 0 12px rgba(127, 216, 232, 0.85));
+}
+
+.dh-root:has(.dh-compact) .dh-error {
+  position: absolute;
+  top: 18px;
+  right: 8px;
+  left: 8px;
+  z-index: 2;
+  margin: 0;
+  background: rgba(32, 16, 16, 0.94);
+}
+
+/* ------------------------------------------------------------ status line */
+
+.dh-status {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  /* Room for the taller two-line disconnected form: keeps the lists below from
+     shifting when the connection drops (P2-6). */
+  min-height: 42px;
+  margin: 0 12px 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dh-status-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.dh-status-line {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dh-label-soft);
+  font-size: 11px;
+}
+.dh-status-line[data-state="connected"] {
+  color: var(--dh-label);
+}
+.dh-status-line[data-state="offline"] {
+  color: #f0c9a0;
+}
+
+/* The localized reason gets its own dim line; it wraps instead of ellipsising,
+   which is the whole point at 360px. */
+.dh-status-reason {
+  margin: 1px 0 0;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  line-height: 14px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.dh-status-reason[hidden] {
+  display: none;
+}
+
+/* -------------------------------------------------------- approval card */
+
+.dh-approval {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 10px;
+  border: 1px solid rgba(245, 181, 68, 0.75);
+  border-radius: 12px;
+  background: rgba(245, 181, 68, 0.14);
+  box-shadow: 0 0 0 1px rgba(245, 181, 68, 0.25), 0 8px 22px rgba(0, 0, 0, 0.35);
+  animation: dh-pop 160ms ease-out;
+}
+.dh-approval[hidden] {
+  display: none;
+}
+
+.dh-approval-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dh-approval-title {
+  margin: 0;
+  color: var(--dh-amber);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.dh-approval-countdown {
+  color: #ffd9a0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dh-approval-tool,
+.dh-approval-reason {
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  word-break: break-word;
+}
+
+.dh-approval-tool-text {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  color: #fff3dd;
+}
+
+.dh-approval-reason-text {
+  flex: 1;
+  min-width: 0;
+  color: #f3e6d2;
+}
+
+.dh-approval-reason[hidden] {
+  display: none;
+}
+
+.dh-approval-label {
+  flex: none;
+  color: rgba(255, 232, 200, 0.6);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dh-approval-args {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dh-approval-args[hidden] {
+  display: none;
+}
+
+.dh-approval-args-text {
+  margin: 0;
+  max-height: 76px;
+  overflow: auto;
+  padding: 5px 6px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #e8eef6;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  line-height: 15px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dh-approval-more {
+  margin: 0;
+  color: #ffd9a0;
+  font-size: 11px;
+}
+.dh-approval-more[hidden] {
+  display: none;
+}
+
+.dh-approval-status {
+  margin: 0;
+  color: var(--dh-label-soft);
+  font-size: 11px;
+}
+.dh-approval-status[hidden] {
+  display: none;
+}
+
+/* -------------------------------------------------------------- buttons */
+
+.dh-actions {
+  display: flex;
+  gap: 6px;
+}
+.dh-actions-compact {
+  flex: none;
+}
+
+.dh-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--dh-border);
+  border-radius: 8px;
+  background: var(--dh-raised);
+  color: var(--dh-label);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+.dh-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--dh-cyan);
+}
+.dh-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dh-btn-allow {
+  border-color: rgba(95, 208, 138, 0.7);
+  background: rgba(95, 208, 138, 0.2);
+  color: #b8f0cd;
+  font-weight: 600;
+}
+.dh-btn-allow:hover:not(:disabled) {
+  background: rgba(95, 208, 138, 0.3);
+}
+
+.dh-btn-reject {
+  border-color: rgba(242, 100, 90, 0.6);
+  background: rgba(242, 100, 90, 0.16);
+  color: #ffc7c2;
+}
+.dh-btn-reject:hover:not(:disabled) {
+  background: rgba(242, 100, 90, 0.28);
+}
+
+.dh-btn-ghost {
+  flex: none;
+  background: transparent;
+  color: var(--dh-label-soft);
+}
+.dh-btn-send {
+  flex: none;
+  border-color: rgba(127, 216, 232, 0.5);
+  background: rgba(127, 216, 232, 0.16);
+  color: #d5f4fb;
+  font-weight: 600;
+}
+
+.dh-retry[hidden] {
+  display: none;
+}
+
+.dh-btn[hidden] {
+  display: none;
+}
+
+/* A compact header control, e.g. `新建会话` / `重命名` / `子会话 N`. */
+.dh-btn-tiny {
+  flex: none;
+  padding: 2px 7px;
+  font-size: 10px;
+  line-height: 15px;
+}
+
+/* ------------------------------------------------------------ panel body */
+
+.dh-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dh-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+
+/* P0-2: the sessions list takes the flexible share and scrolls inside itself, so
+   three sessions and twelve leave the composer exactly where it was. */
+.dh-section-sessions {
+  flex: 1 1 auto;
+  /* Keep ~3 session rows reachable no matter how tall the avatar gets; the
+     activity feed below it is the one that yields. */
+  min-height: clamp(80px, 20%, 260px);
+}
+
+/* The activity feed keeps a bounded, mostly-fixed share: it grows a little with
+   the window but never squeezes the composer or the list out. */
+.dh-section-activity {
+  flex: 0 1 auto;
+  min-height: clamp(48px, 12%, 200px);
+}
+
+/* The only scrolling regions: each list gets its own bounded box. */
+.dh-section-sessions .dh-sessions,
+.dh-section-activity .dh-activity {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.dh-section-sessions .dh-sessions::-webkit-scrollbar,
+.dh-section-activity .dh-activity::-webkit-scrollbar {
+  width: 6px;
+}
+.dh-section-sessions .dh-sessions::-webkit-scrollbar-thumb,
+.dh-section-activity .dh-activity::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.dh-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dh-section-title {
+  margin: 0;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dh-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.dh-section-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dh-sessions,
+.dh-activity {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* P2-7: the activity scope switch (当前会话 / 全部会话). Two tiny buttons, so the
+   header still fits at 300px; no extra row is added to the panel. */
+.dh-mode-switch {
+  gap: 2px;
+}
+
+.dh-mode {
+  padding: 1px 6px;
+}
+
+.dh-mode[aria-pressed="true"] {
+  background: rgba(127, 216, 232, 0.16);
+  color: #d5f4fb;
+}
+
+/* P2-7: the small `需要处理` / `最近` heading lines of the aggregate feed. */
+.dh-activity-head {
+  margin-top: 1px;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  list-style: none;
+}
+
+.dh-activity-row-pinned {
+  min-height: 17px;
+  padding-left: 4px;
+  border-left: 2px solid var(--dh-red);
+}
+
+.dh-activity-row-pinned .dh-activity-text {
+  color: var(--dh-label);
+}
+
+/* P2-7: the per-row session prefix. */
+.dh-activity-session {
+  flex: none;
+  max-width: 78px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+}
+
+.dh-empty {
+  color: var(--dh-label-faint);
+  font-size: 11px;
+  list-style: none;
+}
+
+/* The empty-state line plus its `新建会话` button, on one row. */
+.dh-empty-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  list-style: none;
+}
+
+/* Subagent children: folded behind the header toggle, indented when shown. */
+.dh-subhead {
+  margin-top: 2px;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  list-style: none;
+}
+
+.dh-session-row-child {
+  margin-left: 10px;
+}
+
+.dh-chip-sub {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(127, 216, 232, 0.16);
+  color: #cfeef6;
+  font-size: 9px;
+  line-height: 14px;
+}
+
+/* session rows */
+
+/* P2-5: a ~27px row (was ~32px), one ellipsised line plus `title` for the full
+   text, and a left colour bar for running/error instead of an outlined row. */
+.dh-session {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 26px;
+  padding: 1px 7px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--dh-label);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+.dh-session:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.dh-session[data-state="running"] {
+  border-left-color: var(--dh-teal);
+}
+.dh-session[data-state="error"] {
+  border-left-color: var(--dh-red);
+}
+.dh-session-selected {
+  background: rgba(127, 216, 232, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(127, 216, 232, 0.45);
+}
+
+/* The model control for the selected session lives under its row (P0-1), so the
+   composer keeps nothing but the textarea and the two actions. */
+.dh-session-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  margin: 0 0 3px 9px;
+  list-style: none;
+}
+
+.dh-session-picker-row .dh-model-select {
+  flex: 0 1 62%;
+  min-width: 0;
+}
+
+.dh-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6b7482;
+}
+.dh-dot[data-state="running"] {
+  background: var(--dh-teal);
+  animation: dh-pulse 1.6s ease-in-out infinite;
+}
+.dh-dot[data-state="error"] {
+  background: var(--dh-red);
+}
+
+.dh-session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dh-count {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--dh-label-soft);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* activity rows */
+
+.dh-activity-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.dh-activity-time {
+  flex: none;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dh-kind {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--dh-label-soft);
+  font-size: 10px;
+}
+
+.dh-activity-tool {
+  flex: none;
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cfe9f2;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+}
+
+.dh-activity-status {
+  flex: none;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+}
+
+.dh-activity-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dh-label-soft);
+}
+
+/* composer */
+
+/* P0-1: textarea + 发送 + 取消 only. The model picker moved to the session list. */
+.dh-composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--dh-border-soft);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.dh-composer-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  max-height: 56px;
+  padding: 5px 6px;
+  border: 1px solid var(--dh-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--dh-label);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 15px;
+  resize: none;
+}
+.dh-composer-input::placeholder {
+  color: var(--dh-label-faint);
+}
+.dh-composer-input:disabled {
+  opacity: 0.5;
+}
+
+.dh-composer-note {
+  margin: 0;
+  min-height: 0;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+}
+.dh-composer-note:empty {
+  display: none;
+}
+
+/* model picker: a `<select>` on the selected session's row (P0-1) */
+
+.dh-model-select {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--dh-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--dh-label);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 14px;
+  -webkit-app-region: no-drag;
+}
+.dh-model-select:disabled {
+  opacity: 0.5;
+}
+.dh-model-select optgroup,
+.dh-model-select option {
+  background: #14161c;
+  color: var(--dh-label);
+}
+
+.dh-model-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+}
+
+/* footer */
+
+.dh-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 12px 9px;
+  border-top: 1px solid var(--dh-border-soft);
+}
+
+.dh-foot-counts {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dh-label-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dh-footer .dh-btn {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+
+/* The three-step opacity control next to 置顶 (P1-4). */
+.dh-footer .dh-opacity {
+  width: 42px;
+  padding: 3px 4px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------- missing bridge */
+
+.dh-fatal {
+  margin: 18px 14px;
+  padding: 14px;
+  gap: 8px;
+}
+.dh-fatal-title {
+  margin: 0;
+  color: var(--dh-red);
+  font-size: 14px;
+}
+.dh-fatal-body {
+  margin: 0;
+  color: var(--dh-label-soft);
+  font-size: 12px;
+  line-height: 18px;
+  word-break: break-word;
+}
+
+/* ----------------------------------------------------------- animations */
+
+@keyframes dh-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.02) translateY(-2px); }
+}
+@keyframes dh-hop {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes dh-shake {
+  0%, 100% { transform: translateX(0); }
+  12% { transform: translateX(-2px); }
+  24% { transform: translateX(2px); }
+  36% { transform: translateX(0); }
+}
+@keyframes dh-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes dh-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@keyframes dh-badge-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 3px rgba(20, 22, 28, 0.9), 0 0 0 0 rgba(245, 181, 68, 0.6); }
+  50% { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(20, 22, 28, 0.9), 0 0 0 8px rgba(245, 181, 68, 0); }
+}
+@keyframes dh-drip {
+  0% { opacity: 0; transform: translateY(-3px) rotate(12deg); }
+  40% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(10px) rotate(12deg); }
+}
+@keyframes dh-sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.4); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes dh-pop {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Calm for anyone who asked the OS to stop animating things. */
+@media (prefers-reduced-motion: reduce) {
+  .dh-root *,
+  .dh-root *::before,
+  .dh-root *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,56 @@
+# electron-builder configuration for the digital-human desktop pet.
+#
+# The app has no runtime dependencies, so this packs source files plus the two
+# icon files and the shipping avatar assets — nothing else. In particular the
+# avatar pipeline's `source/` (generator originals, ~5 MB) and lossless `states/`
+# (~2.5 MB) are intermediates and stay out of the installer; only the 408 KB of
+# WebP states the UI actually loads ship.
+
+appId: com.deepseek.dsh.digital-human
+productName: 数字人
+copyright: Copyright © 2026
+
+directories:
+  output: ../../dist/app
+  buildResources: build
+
+# Explicit allow-list: a glob-free package.json plus the directories that run.
+files:
+  - package.json
+  - main/**/*
+  - preload/**/*
+  - renderer/**/*
+  - src/vendor/**/*
+  - assets/icon.png
+  - assets/tray.png
+  - assets/avatar/states-app/*.webp
+
+# The main process reads assets by path inside the asar archive, which Electron's
+# patched fs supports; nothing needs unpacking.
+asar: true
+
+win:
+  icon: assets/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  # A wizard rather than a silent one-click install: this app talks to a local
+  # harness, and users expect to choose where it lands.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 数字人
+  # ASCII artifact names: Chinese file names trip some download paths and shells.
+  artifactName: dsh-digital-human-${version}-setup.${ext}
+  uninstallDisplayName: 数字人 (dsh digital human)
+
+portable:
+  artifactName: dsh-digital-human-${version}-portable.${ext}

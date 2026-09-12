@@ -1,0 +1,28 @@
+{
+  "name": "dsh-digital-human-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Digital human bridge: exposes local DSH session state, permission decisions and session commands over a local IPC endpoint (no network listener).",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "protocolVersion": 1,
+  "dshRowId": "digital-human-bridge",
+  "scripts": {
+    "test": "node --test test/",
+    "test:direct": "node test/run.mjs",
+    "sync": "node ../../tools/sync-protocol.mjs",
+    "sync:check": "node ../../tools/sync-protocol.mjs --check"
+  },
+  "files": [
+    "src",
+    "tools",
+    "scripts",
+    "README.md",
+    "compat.json"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,22 @@
+# dsh-digital-human — profile patch rows.
+#
+# Copy this block into `$DSH_HOME/profiles/<profile>/cordis.patch.yml`. The
+# profile patch is applied after every bundle layer, so these rows mount the
+# digital human on top of the shipped Web app.
+#
+# `scripts/install.ps1` does this merge for you, idempotently.
+
+# >>> dsh-digital-human (managed) >>>
+- insert:
+    - id: digital-human
+      name: dsh-digital-human
+# <<< dsh-digital-human (managed) <<<
+
+# Optional second stage: let the digital human own permission confirmation.
+# `dsh-client-ui-approval` registers the composer approval panel and, being
+# mounted earlier, would answer every request before the digital human's
+# listener is reached. Disable that row to hand the whole approval surface to
+# the avatar's card. Remove this entry to give the shipped panel back.
+#
+# - id: ui-approval
+#   disabled: true

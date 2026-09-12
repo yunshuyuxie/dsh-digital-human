@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      No network, no remote assets: `default-src 'none'` plus local images,
+      same-origin scripts, and the app's own stylesheet (which styles inline
+      state attributes, hence 'unsafe-inline' for style only).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    />
+    <title>数字人 · Digital human</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <p class="dh-boot">正在启动…</p>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

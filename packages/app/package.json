@@ -1,0 +1,25 @@
+{
+  "name": "dsh-digital-human-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "数字人桌面浮窗：监控本机 DSH 任务状态、确认权限、下发与取消任务（本机 IPC，无网络监听）",
+  "author": "dsh-plugins",
+  "type": "module",
+  "main": "main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check main/index.js && node --check main/connection.js",
+    "probe": "node tools/headless-check.mjs",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  },
+  "license": "MIT"
+}

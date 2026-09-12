@@ -1,0 +1,41 @@
+{
+  "name": "dsh-digital-human",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DeepSeek Harness 数字人：常驻化身的任务状态监控与权限确认界面",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "src",
+    "tools",
+    "profile",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "check": "node --check lib/client.js && node --check lib/index.js",
+    "smoke": "node tools/smoke.mjs",
+    "preflight": "node tools/preflight.mjs",
+    "compose": "node tools/compose-check.mjs",
+    "test": "node tools/build.mjs && node tools/smoke.mjs"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2"
+  }
+}

@@ -1,0 +1,16 @@
+# Dependencies are installed per package, never committed.
+node_modules/
+
+# Build output. The installers are 107 MB each — past GitHub's 100 MB per-file
+# limit — so they ship as release assets, not as repository content. The bridge
+# offline packages are published there too.
+dist/
+
+# Packaging and pipeline scratch.
+*.log
+*.tmp
+
+# Editor / OS noise.
+.DS_Store
+Thumbs.db
+desktop.ini

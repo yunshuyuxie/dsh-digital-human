@@ -1,0 +1,16 @@
+{
+  "version": 3,
+  "file": "client.js",
+  "sources": [
+    "../src/client/approval.js",
+    "../src/client/avatar.js",
+    "../src/client/locales.js",
+    "../src/client/overlay.js",
+    "../src/client/plugin.js",
+    "../src/client/runtime.js",
+    "../src/client/store.js",
+    "../src/client/styles.js"
+  ],
+  "names": [],
+  "mappings": ""
+}
