@@ -21,6 +21,7 @@ import {
 } from '../src/endpoint.js'
 import { randomNonce, serverProof, verifyProof, constantTimeEqual } from '../src/handshake.js'
 import { createAuditLog } from '../src/audit.js'
+import { pipeListenTarget } from '../src/ipc.js'
 import { MAX_FRAME_BYTES_DEFAULT, PROTOCOL_VERSION } from '../src/vendor/protocol/index.js'
 
 /**
@@ -68,6 +69,22 @@ test('parseConfig builds the platform pipe path', () => {
     assert.equal(config.pipePath, '\\\\.\\pipe\\dsh-digital-human-web')
   } else {
     assert.equal(config.pipePath, `${defaultStateDir(CONTEXT.home)}/dsh-digital-human-web.sock`)
+  }
+})
+
+test('the pipe listen target widens Windows pipes and leaves POSIX sockets alone', () => {
+  const pipePath = '\\\\.\\pipe\\dsh-digital-human-web'
+  const target = pipeListenTarget(pipePath)
+  if (process.platform === 'win32') {
+    // A host started with administrator rights creates a named pipe whose
+    // default DACL admits administrators and SYSTEM only, and a normally
+    // started desktop app then cannot connect at all; readableAll/writableAll
+    // make uv_pipe_chmod add an Everyone ACE, while the token handshake stays
+    // the authentication boundary.
+    assert.deepEqual(target, { path: pipePath, readableAll: true, writableAll: true })
+  } else {
+    // POSIX instead tightens the socket file to 0600 after listening.
+    assert.equal(target, pipePath)
   }
 })
 

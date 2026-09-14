@@ -168,33 +168,220 @@ function Resolve-ProfileDir {
 
 <#
 .SYNOPSIS
-  Locate the installed @deepseek-ai/dsh package by scanning PATH for its bin shim.
+  Return the path of a candidate's package.json when it really is
+  @deepseek-ai/dsh, and $null otherwise.
 #>
-function Resolve-DshInstall {
-  param([string] $Override)
-  $candidates = @()
-  if ($Override) { $candidates += $Override }
-  if ($env:DSH_INSTALL_ANCHOR) { $candidates += $env:DSH_INSTALL_ANCHOR }
-  foreach ($dir in ($env:PATH -split [System.IO.Path]::PathSeparator)) {
-    if (-not $dir) { continue }
-    foreach ($shim in @('dsh.ps1', 'dsh.cmd', 'dsh.bat', 'dsh')) {
-      if (Test-Path (Join-Path $dir $shim)) {
-        $candidates += (Join-Path (Split-Path -Parent $dir) '@deepseek-ai/dsh/package.json')
-        break
+function Test-DshManifest {
+  param([string] $Candidate)
+  if (-not $Candidate) { return $null }
+  $manifestPath = if ($Candidate.EndsWith('package.json')) { $Candidate } else { Join-Path $Candidate 'package.json' }
+  if (-not (Test-Path -LiteralPath $manifestPath)) { return $null }
+  try {
+    $manifest = (Read-TextFile $manifestPath) | ConvertFrom-Json
+    if ((Get-PropertyValue -Object $manifest -Name 'name') -eq '@deepseek-ai/dsh') { return $manifestPath }
+  } catch {
+    return $null
+  }
+  return $null
+}
+
+<#
+.SYNOPSIS
+  Fold '/' separators and '..' segments out of a path without touching the
+  filesystem (the target of a shim may not exist).
+#>
+function Convert-DshPath {
+  param([string] $Path)
+  if (-not $Path) { return $null }
+  $stack = [System.Collections.Generic.List[string]]::new()
+  foreach ($part in @(($Path -replace '/', '\') -split '\\')) {
+    if (-not $part -or $part -eq '.') { continue }
+    if ($part -eq '..') {
+      $atDriveRoot = ($stack.Count -eq 1 -and $stack[0] -match '^[A-Za-z]:$')
+      if ($stack.Count -gt 0 -and -not $atDriveRoot) { $stack.RemoveAt($stack.Count - 1) }
+      continue
+    }
+    $stack.Add($part)
+  }
+  if ($stack.Count -eq 0) { return $null }
+  $joined = ($stack -join '\')
+  if ($stack.Count -eq 1 -and $stack[0] -match '^[A-Za-z]:$') { return $joined + '\' }
+  return $joined
+}
+
+<#
+.SYNOPSIS
+  Package roots named by a `dsh` bin shim's own body.
+
+.DESCRIPTION
+  Every shim npm, pnpm or yarn generates launches the entry script of the
+  package it belongs to, and names it as '%dp0%\<relative>', '$basedir/<relative>'
+  or an absolute path. Resolving that reference is what makes discovery work
+  across layouts, because only one of them (a local install) puts the shim in
+  <root>/node_modules/.bin.
+
+  The reference continues past the package directory (for example '\lib\bin.js'),
+  so the manifest directory is the segment that ends in 'dsh'.
+#>
+function Get-DshRootsFromShim {
+  param([string] $ShimPath)
+  $roots = [System.Collections.Generic.List[string]]::new()
+  $text = Read-TextFile $ShimPath
+  if (-not $text) { return $roots }
+  $shimDir = Split-Path -Parent $ShimPath
+  $pattern = 'node_modules[\\/](?:@[A-Za-z0-9._~-]+[\\/])?dsh(?=[\\/]|$)'
+  $leftChars = '[A-Za-z0-9_~%.$\\/:@+-]'
+  $rightChars = '[A-Za-z0-9_~$.\\/:@+-]'
+  foreach ($match in [regex]::Matches($text, $pattern)) {
+    $start = $match.Index
+    while ($start -gt 0 -and ("$($text[$start - 1])" -match $leftChars)) { $start-- }
+    $end = $match.Index + $match.Length
+    while ($end -lt $text.Length -and ("$($text[$end])" -match $rightChars)) { $end++ }
+    $token = $text.Substring($start, $end - $start)
+
+    $variable = [regex]::Match($token, '^(%~?dp0%|\$basedir)')
+    if ($variable.Success) {
+      $relative = $token.Substring($variable.Groups[1].Length)
+      if (-not $relative.StartsWith('\') -and -not $relative.StartsWith('/')) { $relative = '/' + $relative }
+      $resolved = Convert-DshPath (Join-Path $shimDir $relative)
+    } elseif ($token.StartsWith('%')) {
+      # '%PNPM_HOME%\...' and friends: expand every leading %NAME% (dp0 is
+      # already handled above). An unknown name makes the token unusable.
+      $expanded = $token
+      while ($expanded -match '^%([A-Za-z_][A-Za-z0-9_]*)%(.*)$') {
+        $name = $Matches[1]
+        $rest = $Matches[2]
+        $value = Get-PropertyValue -Object (Get-Item -Path ("Env:" + $name) -ErrorAction SilentlyContinue) -Name 'Value'
+        if (-not $value) { $expanded = $null; break }
+        $expanded = "$value$rest"
+      }
+      $resolved = if ($expanded) { Convert-DshPath $expanded } else { $null }
+    } elseif ($token -match '^[A-Za-z]:[\\/]' -or $token.StartsWith('\\') -or $token.StartsWith('/')) {
+      $resolved = Convert-DshPath $token
+    } else {
+      # A bare relative reference (npm's fallback branch) is read as relative to
+      # the shim directory; a wrong guess only fails the manifest check later.
+      $resolved = Convert-DshPath (Join-Path $shimDir $token)
+    }
+    if (-not $resolved) { continue }
+
+    $inner = [regex]::Match($resolved, 'node_modules[\\/](?:@[A-Za-z0-9._~-]+[\\/])?dsh')
+    $root = if ($inner.Success) { $resolved.Substring(0, $inner.Index + $inner.Length) } else { $resolved }
+    if (-not $roots.Contains($root)) { $roots.Add($root) }
+  }
+  return $roots
+}
+
+<#
+.SYNOPSIS
+  Global roots dsh is commonly installed into, independent of PATH.
+#>
+function Get-KnownDshRoots {
+  $roots = [System.Collections.Generic.List[string]]::new()
+  if ($env:APPDATA) {
+    # npm's default user prefix; nvm-windows keeps one node per version, each
+    # with its own global node_modules, below the same roaming directory.
+    $roots.Add((Join-Path $env:APPDATA 'npm/node_modules/@deepseek-ai/dsh'))
+    $nvmDir = Join-Path $env:APPDATA 'nvm'
+    if (Test-Path -LiteralPath $nvmDir -PathType Container) {
+      foreach ($version in (Get-ChildItem -LiteralPath $nvmDir -Directory -Force -ErrorAction SilentlyContinue)) {
+        $roots.Add((Join-Path $version.FullName 'node_modules/@deepseek-ai/dsh'))
       }
     }
   }
-  foreach ($candidate in $candidates) {
-    $manifestPath = if ($candidate.EndsWith('package.json')) { $candidate } else { Join-Path $candidate 'package.json' }
-    if (-not (Test-Path $manifestPath)) { continue }
-    try {
-      $manifest = (Read-TextFile $manifestPath) | ConvertFrom-Json
-      if ((Get-PropertyValue -Object $manifest -Name 'name') -eq '@deepseek-ai/dsh') { return $manifestPath }
-    } catch {
-      continue
+  if ($env:LOCALAPPDATA) {
+    # pnpm keeps its global bin directory on PATH but the package itself in a
+    # store below it: <localAppData>/pnpm/global/<store>/node_modules/...
+    $pnpmGlobal = Join-Path $env:LOCALAPPDATA 'pnpm/global'
+    if (Test-Path -LiteralPath $pnpmGlobal -PathType Container) {
+      foreach ($store in (Get-ChildItem -LiteralPath $pnpmGlobal -Directory -Force -ErrorAction SilentlyContinue)) {
+        $roots.Add((Join-Path $store.FullName 'node_modules/@deepseek-ai/dsh'))
+      }
+      $roots.Add((Join-Path $pnpmGlobal 'node_modules/@deepseek-ai/dsh'))
     }
   }
-  throw 'cannot find the installed @deepseek-ai/dsh -- pass -DshInstall <path to its package.json>'
+  $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
+  if ($homeDir) { $roots.Add((Join-Path $homeDir '.npm-global/node_modules/@deepseek-ai/dsh')) }
+  return $roots
+}
+
+<#
+.SYNOPSIS
+  Locate the installed @deepseek-ai/dsh package.
+
+.DESCRIPTION
+  `dsh` reaches PATH through several layouts and the shim's own directory only
+  implies the package location in one of them:
+
+    * npm prefix, npm global, nvm:  <prefix>/dsh.cmd  with the package in
+      <prefix>/node_modules/@deepseek-ai/dsh;
+    * npm or pnpm local install:    <root>/node_modules/.bin/dsh.cmd  with the
+      package in <root>/node_modules/@deepseek-ai/dsh;
+    * pnpm global store:            <localAppData>/pnpm/dsh.cmd  with the
+      package in <localAppData>/pnpm/global/<store>/node_modules/@deepseek-ai/dsh.
+
+  The shim body is therefore the primary evidence (Get-DshRootsFromShim), the
+  known global roots come next, and a local `npm prefix -g` / `pnpm root -g`
+  query - neither reads the registry nor installs anything - is the last
+  resort for shims whose body carries no usable path. Every candidate must pass
+  Test-DshManifest, so a wrong guess is skipped rather than trusted.
+#>
+function Resolve-DshInstall {
+  param([string] $Override)
+  foreach ($candidate in @($Override, $env:DSH_INSTALL_ANCHOR)) {
+    $found = Test-DshManifest $candidate
+    if ($found) { return $found }
+  }
+
+  foreach ($dir in ($env:PATH -split [System.IO.Path]::PathSeparator)) {
+    if (-not $dir) { continue }
+    foreach ($shim in @('dsh.cmd', 'dsh.bat', 'dsh.ps1', 'dsh')) {
+      $shimPath = Join-Path $dir $shim
+      if (-not (Test-Path -LiteralPath $shimPath)) { continue }
+      foreach ($root in (Get-DshRootsFromShim -ShimPath $shimPath)) {
+        $found = Test-DshManifest $root
+        if ($found) { return $found }
+      }
+      # Legacy assumption, kept because it is exact for a .bin shim.
+      $found = Test-DshManifest (Join-Path (Split-Path -Parent $dir) '@deepseek-ai/dsh')
+      if ($found) { return $found }
+      break
+    }
+  }
+
+  foreach ($root in (Get-KnownDshRoots)) {
+    $found = Test-DshManifest $root
+    if ($found) { return $found }
+  }
+
+  $npmTool = Get-Command 'npm.cmd' -ErrorAction SilentlyContinue
+  if (-not $npmTool) { $npmTool = Get-Command 'npm' -ErrorAction SilentlyContinue }
+  if ($npmTool) {
+    try {
+      $prefix = "$((& $npmTool.Source 'prefix' '-g' 2>$null | Select-Object -First 1))".Trim()
+      if ($prefix) {
+        $found = Test-DshManifest (Join-Path $prefix 'node_modules/@deepseek-ai/dsh')
+        if ($found) { return $found }
+      }
+    } catch {
+      # npm is optional here: a failure only costs one candidate.
+    }
+  }
+  $pnpmTool = Get-Command 'pnpm.cmd' -ErrorAction SilentlyContinue
+  if (-not $pnpmTool) { $pnpmTool = Get-Command 'pnpm' -ErrorAction SilentlyContinue }
+  if ($pnpmTool) {
+    try {
+      $globalRoot = "$((& $pnpmTool.Source 'root' '-g' 2>$null | Select-Object -First 1))".Trim()
+      if ($globalRoot) {
+        $found = Test-DshManifest (Join-Path $globalRoot '@deepseek-ai/dsh')
+        if ($found) { return $found }
+      }
+    } catch {
+      # pnpm is optional here too.
+    }
+  }
+
+  throw 'cannot find the installed @deepseek-ai/dsh -- pass -DshInstall <path to its package.json>; find it under the node_modules of the prefix that installed dsh (npm prefix -g, pnpm root -g)'
 }
 
 <#

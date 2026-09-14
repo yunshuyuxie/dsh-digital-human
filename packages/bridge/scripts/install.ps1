@@ -29,8 +29,10 @@
   beside the packed payload or this script.
 
 .PARAMETER DshInstall
-  Path to the installed `@deepseek-ai/dsh/package.json`. Discovered from PATH by
-  default; only needed when `dsh` is not on PATH.
+  Path to the installed `@deepseek-ai/dsh/package.json`. Discovered by default
+  from the `dsh` bin shim on PATH, the well-known npm / pnpm / nvm global roots
+  and a local `npm prefix -g` / `pnpm root -g` query; only needed when all of
+  those miss.
 
 .PARAMETER DryRun
   Report every planned change without touching the profile.
@@ -80,10 +82,12 @@ Write-Host "install: $packageName -> profile '$Profile' ($profileDir)"
 Write-Host "install: package root $resolvedPackageRoot"
 
 # --- 1. compatibility, checked offline against the installed dsh ---------------
+# Resolved once here and handed to the self-check below, so both steps agree on
+# which dsh this installation is being checked against.
+$dshManifestPath = Resolve-DshInstall $DshInstall
 $compatPath = Resolve-SideFile -ScriptRoot $PSScriptRoot -Name 'compat.json'
 if ($compatPath) {
   $compat = (Read-TextFile $compatPath) | ConvertFrom-Json
-  $dshManifestPath = Resolve-DshInstall $DshInstall
   $dshVersion = Get-PropertyValue -Object ((Read-TextFile $dshManifestPath) | ConvertFrom-Json) -Name 'version'
   Write-Host "install: installed dsh $dshVersion ($dshManifestPath)"
   Assert-DshCompatible -InstalledVersion $dshVersion -Range @(Get-PropertyValue -Object $compat -Name 'dsh')
@@ -140,7 +144,7 @@ if ($DryRun) {
 
 # --- 6. offline self-check -----------------------------------------------------
 if (-not $DryRun) {
-  $verifyArgs = @{ Profile = $Profile; DshHome = $harnessHome; PackageRoot = $resolvedPackageRoot; Quiet = $true; PassThru = $true }
+  $verifyArgs = @{ Profile = $Profile; DshHome = $harnessHome; PackageRoot = $resolvedPackageRoot; Quiet = $true; PassThru = $true; DshInstall = $dshManifestPath }
   if ($SkipCompose) { $verifyArgs.SkipCompose = $true }
   $selfCheck = & (Join-Path $PSScriptRoot 'verify.ps1') @verifyArgs
   if (-not $selfCheck.ok) {

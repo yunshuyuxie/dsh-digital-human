@@ -7,8 +7,8 @@
  * and delegates everything semantic to its caller through `onRpc` and
  * `onAuthenticated`.
  *
- * No TCP port is ever opened: the endpoint is a filesystem object only the
- * creating user can reach.
+ * No TCP port is ever opened: the endpoint is a named pipe (or a POSIX socket
+ * file) plus the token store, never a socket that the network can reach.
  */
 import { chmodSync, existsSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -27,6 +27,34 @@ import { constantTimeEqual, randomNonce, serverProof } from './handshake.js';
 
 /** Frame id used for failures that happen before an RPC id exists. */
 const HANDSHAKE_FRAME_ID = 'handshake';
+
+/**
+ * The `listen()` target for one pipe path.
+ *
+ * A Windows named pipe is created with a NULL security descriptor, so it
+ * inherits the default DACL of the listening process's token — and the default
+ * DACL of an elevated (administrator) token grants Administrators and SYSTEM
+ * only. A harness started with administrator rights would then publish a pipe
+ * that the desktop app, double-clicked by the same user without elevation,
+ * cannot connect to at all (`connect EPERM`), while the endpoint file and the
+ * token stay readable and every offline check still passes — a failure that
+ * looks like "installed but never connects".
+ *
+ * `readableAll` / `writableAll` widen the pipe to every local user through
+ * `uv_pipe_chmod`. Authentication stays with the token handshake, and another
+ * local user cannot pass it: the token store is not readable outside this
+ * account.
+ *
+ * On POSIX the socket file is tightened to 0600 instead, so the options are
+ * deliberately not used there.
+ *
+ * @param path - the configured pipe/socket path.
+ * @returns the value to hand to `server.listen()`; exported for the tests.
+ */
+export function pipeListenTarget(path) {
+  if (process.platform !== 'win32') return path;
+  return { path, readableAll: true, writableAll: true };
+}
 
 /**
  * Create the IPC server. Nothing listens until {@link IpcServer.listen} runs.
@@ -232,7 +260,7 @@ export function createIpcServer(options) {
         reject(error);
       };
       server.once('error', onError);
-      server.listen(path, () => {
+      server.listen(pipeListenTarget(path), () => {
         server.off('error', onError);
         resolve();
       });

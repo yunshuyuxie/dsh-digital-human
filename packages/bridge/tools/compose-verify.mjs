@@ -15,11 +15,13 @@
  *
  * Exits 0 when the row is composed and enabled, 1 otherwise.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+import { findDshInstall } from './find-install.mjs';
 
 /** Parse the flags this script owns. */
 function parseArgs(argv) {
@@ -35,35 +37,13 @@ function parseArgs(argv) {
   return args;
 }
 
-/** Package-manifest anchors found by scanning PATH for the `dsh` bin shim. */
-function anchorsFromPath() {
-  const anchors = [];
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    if (dir === '') continue;
-    for (const shim of ['dsh.ps1', 'dsh.cmd', 'dsh.bat', 'dsh']) {
-      if (!existsSync(join(dir, shim))) continue;
-      anchors.push(join(dirname(dir), '@deepseek-ai', 'dsh', 'package.json'));
-      break;
-    }
-  }
-  return anchors;
-}
-
-/** Locate the installed `@deepseek-ai/dsh` package. */
+/** Locate the installed `@deepseek-ai/dsh` package (see tools/find-install.mjs). */
 function findInstall(explicit) {
-  const candidates = [];
-  if (explicit !== undefined) candidates.push(explicit);
-  if (process.env.DSH_INSTALL_ANCHOR !== undefined) candidates.push(process.env.DSH_INSTALL_ANCHOR);
-  candidates.push(...anchorsFromPath());
-  for (const candidate of candidates) {
-    const manifestPath = candidate.endsWith('package.json') ? candidate : join(candidate, 'package.json');
-    try {
-      if (JSON.parse(readFileSync(manifestPath, 'utf8')).name === '@deepseek-ai/dsh') return manifestPath;
-    } catch {
-      /* try the next candidate */
-    }
+  try {
+    return findDshInstall({ explicit });
+  } catch {
+    throw new Error('compose-verify: cannot find @deepseek-ai/dsh — pass --install <path to its package.json>');
   }
-  throw new Error('compose-verify: cannot find @deepseek-ai/dsh — pass --install <path to its package.json>');
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -78,7 +58,10 @@ const appBootManifest = JSON.parse(readFileSync(appBootManifestPath, 'utf8'));
 const appBootEntry = join(appBootDir, typeof appBootManifest.main === 'string' ? appBootManifest.main : 'lib/index.js');
 const appBoot = await import(pathToFileURL(appBootEntry).href);
 
-const profile = appBoot.loadProfile('dsh', args.profile, dshManifestPath, undefined, { userLayer: true });
+// The resolved home is handed to loadProfile: passing undefined would silently
+// fall back to the process default and compose a different profile than the one
+// --dsh-home names.
+const profile = appBoot.loadProfile('dsh', args.profile, dshManifestPath, dshHome, { userLayer: true });
 const rows = appBoot.composeEntries([
   (profile.layers ?? []).flatMap((layer) => layer.patches),
   profile.patches,

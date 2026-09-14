@@ -1,6 +1,6 @@
 {
   "name": "dsh-digital-human-bridge",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "private": true,
   "description": "Digital human bridge: exposes local DSH session state, permission decisions and session commands over a local IPC endpoint (no network listener).",
   "type": "module",

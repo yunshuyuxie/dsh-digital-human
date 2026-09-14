@@ -31,7 +31,7 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const zip = args.zip ?? join(import.meta.dirname, '..', '..', '..', 'dist', 'dsh-digital-human-bridge-0.2.0.zip');
+const zip = args.zip ?? join(import.meta.dirname, '..', '..', '..', 'dist', 'dsh-digital-human-bridge-0.2.2.zip');
 const failures = [];
 let counter = 0;
 

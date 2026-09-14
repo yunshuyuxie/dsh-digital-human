@@ -20,6 +20,10 @@
 .PARAMETER Quiet
   Print only failures and the final summary (used by install.ps1).
 
+.PARAMETER DshInstall
+  Path to the installed `@deepseek-ai/dsh/package.json`, forwarded to the
+  compose layer. Discovered the same way install.ps1 discovers it when omitted.
+
 .EXAMPLE
   pwsh -File verify.ps1 -Profile web
 #>

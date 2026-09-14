@@ -32,9 +32,9 @@ pwsh -File scripts/install.ps1 -Profile web
 
 # 或先打包，再从发布产物装（推荐）
 pwsh -File scripts/pack.ps1
-#   → dist/dsh-digital-human-bridge-0.1.0.zip
-Expand-Archive dist\dsh-digital-human-bridge-0.1.0.zip -DestinationPath dist\release
-pwsh -File dist\release\dsh-digital-human-bridge-0.1.0\install.ps1 -Profile web
+#   → dist/dsh-digital-human-bridge-0.2.1.zip
+Expand-Archive dist\dsh-digital-human-bridge-0.2.1.zip -DestinationPath dist\release
+pwsh -File dist\release\dsh-digital-human-bridge-0.2.1\install.ps1 -Profile web
 ```
 
 安装做四件事，全部是文件系统操作，**不调用 pnpm、不访问 registry**：
@@ -44,6 +44,9 @@ pwsh -File dist\release\dsh-digital-human-bridge-0.1.0\install.ps1 -Profile web
 3. 写依赖项：profile `package.json` 增加 `"dsh-digital-human-bridge": "link:<包目录>"`（外科式文本编辑，保留其余格式）；
 4. 合并 patch 行：把 `rows.yml`（其中 `__PROFILE__` 被替换为实际 profile 名）写入带标记块的位置。
 
+第 1 步的 `@deepseek-ai/dsh` 位置按下面的顺序离线发现，不需要 `dsh` 在 PATH 上：解析 PATH 里 `dsh.cmd` / `dsh.bat` / `dsh.ps1` / `dsh` 的**自身内容**（npm / pnpm / nvm 生成的 shim 都写明了自己启动的入口路径）→ npm 用户前缀、nvm-windows 各版本目录、pnpm 全局 store → `npm prefix -g` / `pnpm root -g`（只读本地配置）。都不成立时用 `-DshInstall` 显式指定。
+
+
 `patchReload: live` 的 profile 会**立即热挂载**该行，无需重启 dsh；只有浏览器页面需要刷新。
 
 自检与卸载：
@@ -52,6 +55,13 @@ pwsh -File dist\release\dsh-digital-human-bridge-0.1.0\install.ps1 -Profile web
 pwsh -File scripts/verify.ps1 -Profile web        # 四层：文件 / 组合树 / 载荷校验和 / 运行时探针
 pwsh -File scripts/uninstall.ps1 -Profile web     # 反向移除，保留用户自己的 patch 行
 pwsh -File scripts/uninstall.ps1 -Profile web -PurgeState   # 额外清理端点文件与 token
+```
+
+`@deepseek-ai/dsh` 发现逻辑（安装脚本与组合自检各一份实现）的回归测试，用 fixture 覆盖 npm 前缀 / 本地 `.bin` / pnpm store / nvm / `%VAR%` 引用等布局：
+
+```powershell
+pwsh -File test/resolve-dshinstall.test.ps1   # PowerShell 侧（Windows PowerShell 5.1 亦可）
+node test/run.mjs                             # 全量单进程测试，含 tools/find-install.mjs 的发现用例
 ```
 
 ## 无 GUI 探针
@@ -94,7 +104,8 @@ node tools/probe.mjs --profile web --cancel <sessionId>
 
 ## 安全姿态
 
-- **边界是操作系统用户账户**：同用户下的任何进程本就能读会话日志与 `$DSH_HOME`。token + 双向 HMAC + 管道 DACL 是**纵深防御**（挡不同用户、管道抢注、误连），不是同用户恶意软件的屏障。
+- **边界是操作系统用户账户**：同用户下的任何进程本就能读会话日志与 `$DSH_HOME`。token + 双向 HMAC 是**认证边界**（挡不同用户、误连，以及抢注管道后的冒充），不是同用户恶意软件的屏障。
+- **Windows 上管道对所有本机用户可连**：named pipe 套用的是创建进程令牌的**默认 DACL**，而提权（管理员）令牌的默认 DACL 只给 Administrators/SYSTEM —— 于是用管理员权限启动 dsh 时，普通权限双击启动的 App 会**完全连不上**（`connect EPERM`，可端点文件与 token 照旧可读，极易被误判成"装好了却连不上"）。所以监听时带 `readableAll`/`writableAll`（libuv 会调 `uv_pipe_chmod` 加一个 Everyone ACE）把管道放宽；认证仍靠 token 握手，而 token 只对**本账户、SYSTEM 与 Administrators** 可读（`$DSH_HOME/digital-human/secrets.json`），别的本机用户连上也过不了握手。POSIX 侧相反：socket 文件收紧到 `0600`。
 - 管道名固定、token 32 字节随机（base32），客户端必须证明持有 token，服务器也用同一 token 回证（防抢注）；比较是常量时间的。
 - 未认证连接 5s 内未握手即断开；认证失败只回 `unauthorized`，不透露任何细节。
 - 每次权限请求与决策都写入 `audit.jsonl`（含 `clientId` 与 `routing`），DSH 自身的 `approval/asked|decided` 照常落会话日志。
@@ -111,7 +122,9 @@ node tools/probe.mjs --profile web --cancel <sessionId>
 
 | 现象 | 处理 |
 |---|---|
+| `cannot find the installed @deepseek-ai/dsh` | 自动发现没命中该机器的安装布局：`npm prefix -g` / `pnpm root -g` 拿到前缀，再把 `<前缀>/node_modules/@deepseek-ai/dsh/package.json` 传给 `-DshInstall` |
 | `probe: no endpoint file …` | dsh 未运行，或插件未安装；跑 `verify.ps1` 看组合层 |
+| App 一直"正在连接/连接断开"，而端点文件、token、版本都正常 | dsh 是**以管理员权限**启动的：提权进程建的管道，普通权限的 App 连不上（0.2.1 及更早）。0.2.2 起插件已自动放宽管道；或改用普通权限启动 dsh（别经过 gsudo / "以管理员身份运行"） |
 | 探针连上但收不到审批 | `approvalRouting` 是否为 `off`；是否已有浏览器客户端抢答（`fallback` 模式下浏览器优先） |
 | 权限请求无人应答、工具失败关闭 | App/探针都没连上，或 `callId` 缺失导致委托到链尾 |
 | 管道被占用（EADDRINUSE） | 另一个 profile 已用同名管道；给它配不同的 `pipeName`（插件只警告，不影响该 profile 加载） |
