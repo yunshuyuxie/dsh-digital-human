@@ -1,4 +1,4 @@
-﻿# Build and publish a release: build the app, pack the bridge, verify the
+# Build and publish a release: build the app, pack the bridge, verify the
 # artifacts are not stale, then create or update a GitHub release and replace its
 # assets.
 #
@@ -7,7 +7,10 @@
 #   2. a stale build can be uploaded without complaint — the asar is compared
 #      against the newest source file before anything is published;
 #   3. `github.com:443` may be unreachable while the rest of the network is fine,
-#      so a local proxy can be passed in.
+#      so a local proxy can be passed in;
+#   4. replacing an asset means deleting it first, so re-uploading an unchanged
+#      107 MB installer can leave the release without that installer if the
+#      transfer dies; an asset whose digest already matches is kept as it is.
 #
 #   pwsh -File tools/release.ps1 -DryRun
 #   pwsh -File tools/release.ps1 -Proxy http://127.0.0.1:64174
@@ -211,9 +214,23 @@ if ($release -and $release.id) {
 $assets = @($appAssets) + @($bridgeZip)
 foreach ($file in $assets) {
   $name = Split-Path $file -Leaf
+  $localHash = (Get-FileHash -Path $file -Algorithm SHA256).Hash.ToLowerInvariant()
   # Replace semantics: an asset name is unique per release, so drop the old one.
   $current = Invoke-Api -Method GET -Url "$apiBase/releases/$($release.id)/assets" | ConvertFrom-Json
   $clash = $current | Where-Object { $_.name -eq $name } | Select-Object -First 1
+  $remoteDigest = ''
+  if ($clash) {
+    # The digest is absent on assets uploaded before the API exposed it; only
+    # then does this fall through to the unconditional replace below.
+    $digest = $clash.PSObject.Properties['digest']
+    if ($digest -and $digest.Value) { $remoteDigest = "$($digest.Value)" }
+  }
+  if ($remoteDigest -eq "sha256:$localHash") {
+    # Re-uploading 107 MB that is already published gains nothing and risks
+    # leaving the release without that installer if the transfer dies halfway.
+    Write-Step "keeping $name (already published, sha256 unchanged)"
+    continue
+  }
   if ($clash) {
     Write-Step "removing the previous $name"
     Invoke-Api -Method DELETE -Url "$apiBase/releases/assets/$($clash.id)" | Out-Null
