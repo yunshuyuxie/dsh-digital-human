@@ -1,4 +1,4 @@
-# Build and publish a release: build the app, pack the bridge, verify the
+﻿# Build and publish a release: build the app, pack the bridge, verify the
 # artifacts are not stale, then create or update a GitHub release and replace its
 # assets.
 #
